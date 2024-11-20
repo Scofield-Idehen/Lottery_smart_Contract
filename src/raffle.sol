@@ -2,6 +2,7 @@
 pragma solidity ^0.8.19;
 
 import {VRFConsumerBaseV2Plus} from "@chainlink/contracts/src/v0.8/vrf/dev/VRFConsumerBaseV2Plus.sol";
+import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/liberies/VRFV2PlusClient.sol";
 
 /**
  * @title A simple raffle contract
@@ -53,7 +54,7 @@ contract raffle is VRFConsumerBaseV2Plus{
             revert();
         }
         s_requestId = s_vrfCoordinator.requestRandomWords(
-            VRFV2PlusClient.RandomWordsRequest({
+            VRFV2PlusClient.RandomWordsRequest request = VRFV2PlusClient.RandomWordsRequest({
                 keyHash: keyHash,
                 subId: s_subscriptionId,
                 requestConfirmations: requestConfirmations,
@@ -63,6 +64,7 @@ contract raffle is VRFConsumerBaseV2Plus{
                     VRFV2PlusClient.ExtraArgsV1({nativePayment: false})
                 )
             })
+            //uint256 s_requestId = s_vrfCoordinator.requestRandomWords(request);
         );
         //get a random number from chainlinkVRF 2.5
     }
