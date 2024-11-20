@@ -1,7 +1,7 @@
 //SPDX-License-Identifier: MIT 
 pragma solidity ^0.8.19;
 
-import {VRFConsumerBaseV2Plus} from "@chainlink/contracts@1.2.0/src/v0.8/vrf/dev/VRFConsumerBaseV2Plus.sol";
+import {VRFConsumerBaseV2Plus} from "@chainlink/contracts/src/v0.8/vrf/dev/VRFConsumerBaseV2Plus.sol";
 
 /**
  * @title A simple raffle contract
@@ -13,7 +13,7 @@ import {VRFConsumerBaseV2Plus} from "@chainlink/contracts@1.2.0/src/v0.8/vrf/dev
  error Raffle__NotEnoughETH();
 
 
-contract raffle{
+contract raffle is VRFConsumerBaseV2Plus{
 
     /** Errors */
      error Rafle__NotEnoughETH();
@@ -26,13 +26,14 @@ contract raffle{
 
     /** Evenrts */
 
-    events Raffledentered (address indexed players); 
+    event Raffledentered (address indexed players); 
 
     //this set an entrace fee to enter the raffle contract
-    constructor(uint256 entrancefee, uint intervals){
+    constructor(uint256 entrancefee, uint interval, address vrfcoordinator )VRFConsumerBaseV2Plus(vrfcoordinator){
         i_entrancefee = entrancefee;
-        i_interval = intervals;
+        i_interval = interval;
         s_lastTimestamp = block.timestamp;
+        s_vrfCoordinator = requestRandomWords();
     }
     function enterraffle()external payable{
         //previouse method but not gas efficient!!!
@@ -48,7 +49,7 @@ contract raffle{
 
     //get a random number of players
     function pickWinner()external{
-        if (block.timestamp - s_lastTimestamp) > i_interval;{
+        if ((block.timestamp - s_lastTimestamp) > i_interval){
             revert();
         }
         s_requestId = s_vrfCoordinator.requestRandomWords(
