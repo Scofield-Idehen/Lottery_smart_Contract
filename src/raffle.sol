@@ -1,7 +1,7 @@
 //SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import {VRFConsumerBaseV2} from "@chainlink/contracts/src/v0.8/vrf/VRFConsumerBaseV2.sol";
+import {VRFConsumerBaseV2Plus} from "@chainlink/contracts/src/v0.8/vrf/dev/VRFConsumerBaseV2Plus.sol";
 
 import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/VRFV2PlusClient.sol";
 
@@ -13,13 +13,14 @@ import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/V
  */
 
 
-contract Raffle is VRFConsumerBaseV2 {
+contract Raffle is VRFConsumerBaseV2Plus {
     /**
      * Errors
      */
     error Raffle__NotEnoughETH();
     error Transfer__Failed();
-    error Raffle__NotOPen()
+    error Raffle__NotOPen();
+    error Raffle__UpKeepNotUpdated(uint balance, uint playerslenght, uint raffleState);
     
     //Types Declarations
     enum RaffleState{
@@ -39,7 +40,7 @@ contract Raffle is VRFConsumerBaseV2 {
     uint32 private immutable i_callbackGasLimit;
 
     address payable[] private s_players;
-    address [] private s_recentwinners;
+    address private s_recentwinners;
     uint256 private s_lastTimestamp;
 
     RaffleState private s_raffleState;
@@ -48,7 +49,7 @@ contract Raffle is VRFConsumerBaseV2 {
      * Evenrts
      */
     event Raffledentered(address indexed players);
-    event WinnerPicked(address indexed winners)
+    event WinnerPicked(address indexed winners);
 
     //this set an entrace fee to enter the raffle contract
     constructor(
@@ -58,7 +59,7 @@ contract Raffle is VRFConsumerBaseV2 {
         bytes32 gasLane,
         uint256 subscriptionId,
         uint32 callbackGasLimit
-    ) VRFConsumerBaseV2(vrfcoordinator) {
+    ) VRFConsumerBaseV2Plus(vrfcoordinator) {
         i_entrancefee = entrancefee;
         i_interval = interval;
         i_keyHash = gasLane;
@@ -84,10 +85,31 @@ contract Raffle is VRFConsumerBaseV2 {
         emit Raffledentered(msg.sender);
     }
 
+    /** 
+    * The following should be true in order for upkeepneeded to be 
+    * 1, the time interval has passed between raffle run
+    * 2, the lottery is open again
+    * 3, the contract has ETH
+    * 4, You still have LINKS
+    */
+    function checkUpkeep(bytes memory) public view returns(bool upkeepNeeded, bytes memory) 
+    {
+        bool timehaspassed = ((block.timestamp - s_lastTimestamp) >= i_interval);
+        bool isOpen = s_raffleState == RaffleState.OPEN;
+        bool hasBalance = address(this).balance > 0;
+        bool hasPlayers = s_players.length >0;
+        upkeepNeeded = timehaspassed && hasBalance && hasPlayers && isOpen;
+        return (upkeepNeeded, "");
+    }
+
     //get a random number of players
-    function pickWinner() external {
-        if ((block.timestamp - s_lastTimestamp) > i_interval) {
-            revert();
+    function performUpkeep() external {
+        ///if ((block.timestamp - s_lastTimestamp) > i_interval) {
+            //revert();
+        //}
+        (bool upkeepNeeded,) = checkUpkeep("");
+        if (upkeepNeeded) {
+            revert Raffle__UpKeepNotUpdated(address(this).balance, s_players.length, uint(s_raffleState));
         }
         s_raffleState = RaffleState.CLOSED;
         VRFV2PlusClient.RandomWordsRequest memory request = VRFV2PlusClient.RandomWordsRequest({
@@ -98,25 +120,27 @@ contract Raffle is VRFConsumerBaseV2 {
             numWords: NUM_WORDS,
             extraArgs: VRFV2PlusClient._argsToBytes(VRFV2PlusClient.ExtraArgsV1({nativePayment: false}))
         });
-        uint256 s_requestId = s_vrfCoordinator.requestRandomWords(request);
+        s_vrfCoordinator.requestRandomWords(request);
         //get a random number from chainlinkVRF 2.5
     }
-
-    function fulfillRandomWords(uint256 requestId, uint256[] calldata randomwords) internal override {
-        uint indexwinner = randomeWords[0] % s_players.length;
+    //Effects Interaction  State 
+    function fulfillRandomWords(uint256, /**requestId*/ uint256[] calldata randomwords) internal override {
+        uint indexwinner = randomwords[0] % s_players.length;
         address payable recentwinners = s_players[indexwinner];
         s_recentwinners = recentwinners;
         s_raffleState = RaffleState.OPEN;
         
-        s_players = new address[](0);
+        s_players = new address payable [](0);
         s_lastTimestamp = block.timestamp;
+        //why are we emitting before we pay winners!!!
+        emit WinnerPicked(s_recentwinners);
 
-
+    //Interactions (External Contracts Interactions)
         (bool success,) = recentwinners.call{value: address(this).balance}("");
         if(!success){
             revert Transfer__Failed();
         }
-        emit winnerPicked(s_recentwinners);
+       
     }
 
     function getentracefee() external view returns (uint256) {
